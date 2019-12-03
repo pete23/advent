@@ -25,7 +25,7 @@
 
 (defn instructions->path
   ([instructions] (reduce instructions->path [[0 0]] instructions))
-  ([acc instruction] (concat acc (instruction (last acc)))))
+  ([acc instruction] (into acc (instruction (last acc)))))
 
 (defn string->instructions [s]
   (map string->instruction (clojure.string/split s #",")))
