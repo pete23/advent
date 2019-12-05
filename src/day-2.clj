@@ -2,13 +2,7 @@
   (:use clojure.test)
   (:require intcode))
 
-(defn atol [s] (Long/parseLong s))
-
-(def input (mapv atol
-                 (-> "day-2.input"
-                     clojure.java.io/resource
-                     slurp
-                     (clojure.string/split #","))))
+(def input (intcode/load-file "day-2.input"))
 
 (defn try-program [noun verb]
   (first
