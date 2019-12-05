@@ -1,6 +1,19 @@
 (ns intcode
   (:use clojure.test))
 
+
+
+(defn decode-instruction [machine]
+  (let [program (:program machine)
+        [opcode src1 src2 dst] (subvec program (:pc machine))
+        operation (case opcode 1 + 2 *)]
+    (fn [machine] (IntcodeMachine. (+ 4 (:pc machine))
+                                   (assoc program dst (operation (nth program src1) (nth program src2)))
+                                   (:input machine)
+                                   (:output machine)))))
+
+  
+
 (defn run-instruction [[opcode src1-loc src2-loc dst-loc] machine]
   (let [program (:program machine)
         operation (case opcode 1 + 2 *)
@@ -9,17 +22,26 @@
         result (operation src1 src2)]
     (assoc program dst-loc result)))
 
-(defprotocol Run
+(defprotocol Machine
+  (decode-instruction [_])
   (run-step [_])
   (run-machine [_]))
 
 (defrecord IntcodeMachine [pc program input output]
-  Run
+  Machine
+
+  (decode-instruction [machine]
+      (let [[opcode src1 src2 dst] (subvec program pc)
+            operation (case opcode 1 + 2 *)]
+        (fn [m] (IntcodeMachine. (+ 4 (:pc m))
+                                 (assoc program dst (operation (nth program src1) (nth program src2)))
+                                 (:input m)
+                                 (:output m)))))
+
   (run-step [machine]
-    (let [next-pc (+ 4 pc)
-          instruction (subvec program pc next-pc)
-          resulting-memory (run-instruction instruction machine)]
-      (IntcodeMachine. next-pc resulting-memory input output)))
+    (let [instruction (decode-instruction machine)]
+      (instruction machine)))
+  
   (run-machine [machine]
     (loop [m machine]
       (if (= 99 (nth (:program m) (:pc m)))
