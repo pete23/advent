@@ -139,9 +139,11 @@
   
 (defn atol [s] (Long/parseLong s))
 
+(defn load-string [s]
+  (mapv atol (clojure.string/split s #",")))
+
 (defn load-file [name]
-  (mapv atol
+  (load-string
         (-> name
             clojure.java.io/resource
-            slurp
-            (clojure.string/split #","))))
+            slurp)))
