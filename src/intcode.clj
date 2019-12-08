@@ -2,6 +2,9 @@
   (:use clojure.test))
 
 (defprotocol Machine
+  (opcode [_])
+  (needs-input? [_])
+  (halted? [_])
   (decode-instruction [_])
   (run-step [_])
   (run-machine [_]))
@@ -29,7 +32,8 @@
               5 :jump-if-true
               6 :jump-if-false
               7 :less-than
-              8 :equals})
+              8 :equals
+              99 :halt})
 
 (defn lt [a b] (if (< a b) 1 0))
 (defn eq [a b] (if (= a b) 1 0))
@@ -45,9 +49,12 @@
 (defrecord IntcodeMachine [pc program input output]
   Machine
 
+  (opcode [machine]
+    (opcodes (rem (nth program pc) 100)))
+  
   (decode-instruction [machine]
-    (let [instruction (subvec program pc)
-          opcode (opcodes (rem (first instruction) 100))
+    (let [opcode (opcode machine)
+          instruction (subvec program pc)
           in (input-loader instruction program)
           out #(nth instruction %)]
       (case opcode
@@ -73,7 +80,7 @@
         (let [[_ out] instruction]
           (IntcodeMachine. (+ 2 pc)
                            (assoc program out (first input))
-                           (rest input)
+                           (subvec input 1)
                            output))
 
         :output
@@ -91,12 +98,18 @@
                            program
                            input
                            output)))))
+
+  (needs-input? [machine]
+    (and (= :input (opcode machine)) (empty? input)))
   
+  (halted? [machine]
+    (= :halt (opcode machine)))
+          
   (run-machine [machine]
     (loop [m machine]
-      (if (= 99 (nth (:program m) (:pc m)))
-        m
-        (recur (run-step m))))))
+      (if (or (halted? m) (needs-input? m))
+       m
+       (recur (run-step m))))))
         
 (defn run-program
   ([program] (:program (run-machine (IntcodeMachine. 0 program [] []))))
