@@ -1,4 +1,5 @@
 (ns intcode
+  (:refer-clojure :exclude [peek compile load-string load-file])
   (:use clojure.test))
 
 (defprotocol Machine
