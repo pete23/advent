@@ -18,7 +18,7 @@
 
 (defn opcode->address-modes [number]
   (loop [number (quot number 100)
-         flags [:opcode]]
+         flags []]
     (if (= number 0)
       (concat flags (repeat :address))
       (recur (quot number 10)
@@ -34,36 +34,40 @@
     (assoc m i n)
     (vec (concat m (repeat (- i (count m)) 0) (vector n)))))
 
-(defn input-loader [instruction program base-address]
-  (let [address-modes (opcode->address-modes (first instruction))]
-    (fn [position]
-      (let [value (nth instruction position)
-            address-mode (nth address-modes position)]
-        (case address-mode
+(defn resolve-operand [value io address-mode program base-address]
+  (case io
+    :in (case address-mode
           :address (peek program value)
           :immediate value
-          :relative (peek program (+ value base-address)))))))
-
-(defn output-address [instruction program base-address]
-  (let [address-modes (opcode->address-modes (first instruction))]
-    (fn [position]
-      (let [value (nth instruction position)
-            address-mode (nth address-modes position)]
-        (case address-mode
-          :address value
-          :immediate value
-          :relative (+ value base-address))))))
+          :relative (peek program (+ value base-address)))
+    :out (case address-mode
+           :address value
+           :immediate value
+           :relative (+ value base-address))))
   
-(def opcodes {1 :add
-              2 :mul
-              3 :input
-              4 :output
-              5 :jump-if-true
-              6 :jump-if-false
-              7 :less-than
-              8 :equals
-              9 :adjust-relative-base
-              99 :halt})
+(def opcodes
+  {1 :add
+   2 :mul
+   3 :input
+   4 :output
+   5 :jump-if-true
+   6 :jump-if-false
+   7 :less-than
+   8 :equals
+   9 :adjust-relative-base
+   99 :halt})
+
+(def opcode->operands
+  {:add [:in :in :out]
+   :mul [:in :in :out]
+   :input [:out]
+   :output [:in]
+   :jump-if-true [:in :in]
+   :jump-if-false [:in :in]
+   :less-than [:in :in :out]
+   :equals [:in :in :out]
+   :adjust-relative-base [:in]
+   :halt []})   
 
 (defn lt [a b] (if (< a b) 1 0))
 (defn eq [a b] (if (= a b) 1 0))
@@ -84,16 +88,10 @@
   
   (decode-instruction [machine]
     (let [opcode (opcode machine)
-          instruction (subvec program pc)
-          in (input-loader instruction program relative-base)
-          out (output-address instruction program relative-base)]
-      ;(println opcode (take 4 instruction))
-      (case opcode
-        (:add :mul :less-than :equals) [opcode (in 1) (in 2) (out 3)]
-        :input [opcode (out 1)]
-        :output [opcode (in 1)]
-        (:jump-if-true :jump-if-false) [opcode (in 1) (in 2)]
-        :adjust-relative-base [opcode (in 1)])))
+          io (opcode->operands opcode)
+          address-modes (opcode->address-modes (nth program pc))
+          args (subvec program (inc pc))]
+      (conj (map #(resolve-operand %1 %2 %3 program relative-base) args io address-modes) opcode)))
       
   (run-step [machine]
     (let [instruction (decode-instruction machine)
