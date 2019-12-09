@@ -24,9 +24,11 @@
              (conj flags (flag->address-mode (rem number 10)))))))
 
 (defn peek [m i]
+  ;(println :peek i (if (< i (count m)) (nth m i) "0*"))
   (if (< i (count m)) (nth m i) 0))
 
 (defn poke [m i n]
+  ;(println :poke i n)
   (if (< i (count m))
     (assoc m i n)
     (vec (concat m (repeat (- i (count m)) 0) (vector n)))))
@@ -41,6 +43,16 @@
           :immediate value
           :relative (peek program (+ value base-address)))))))
 
+(defn output-address [instruction program base-address]
+  (let [address-modes (opcode->address-modes (first instruction))]
+    (fn [position]
+      (let [value (nth instruction position)
+            address-mode (nth address-modes position)]
+        (case address-mode
+          :address value
+          :immediate value
+          :relative (+ value base-address))))))
+  
 (def opcodes {1 :add
               2 :mul
               3 :input
@@ -73,7 +85,8 @@
     (let [opcode (opcode machine)
           instruction (subvec program pc)
           in (input-loader instruction program relative-base)
-          out #(nth instruction %)]
+          out (output-address instruction program relative-base)]
+      ;(println opcode (take 4 instruction))
       (case opcode
         (:add :mul :less-than :equals) [opcode (in 1) (in 2) (out 3)]
         :input [opcode (out 1)]
@@ -83,9 +96,9 @@
       
   (run-step [machine]
     (let [instruction (decode-instruction machine)
-          ;_ (println pc instruction)
+          ;_(println pc instruction)
           opcode (first instruction)]
-      (case opcode
+      (case opcode 
         (:add :mul :less-than :equals)
         (let [[_ in1 in2 out] instruction
               operation (opcode->fn opcode)]
@@ -202,6 +215,10 @@
 (deftest large-numbers
   (is (= 1125899906842624 (first (:output (run-program [104 1125899906842624 99] [])))))
   (is (= 1219070632396864 (first (:output (run-program [1102 34915192 34915192 7 4 7 99 0] []))))))
+
+(deftest relative-output
+  (let [p [109 100 203 10 99]]
+    (is (= (nth (:program (run-program p [666])) 110) 666))))
 
 (defn atol [s] (Long/parseLong s))
 
