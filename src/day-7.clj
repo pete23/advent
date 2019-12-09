@@ -26,7 +26,7 @@
 
 ;; create a starting set of machines
 (defn machines [program phases]
-  (mapv #(intcode.IntcodeMachine. 0 program (vector %) []) phases))
+  (mapv #(intcode/create-machine program (vector %)) phases))
 
 (def test-139629729-from-98765 [3 26 1001 26 -4 26 3 27 1002 27 2 27 1 27 26 
                                 27 4 27 1001 28 -1 28 1005 28 6 99 0 0 5])
@@ -38,11 +38,10 @@
          v input]
     (if (empty? i) o
         (let [m (first i)
-              k (intcode.IntcodeMachine. (:pc m) (:program m) (conj (:input m) v) (:output m))
+              k (intcode/add-input m v)
               l (intcode/run-machine k)]
           (recur (rest i) (conj o l) (last (:output l)))))))
       
-
 ;; run the machines through until halted
 (defn run-centipede
   ([machines] (run-centipede machines 0))
@@ -52,7 +51,6 @@
            o (last (:output (last n)))]
        (if (intcode/halted? (last n)) o
            (recur n o))))))
-
 
 (deftest part-2-examples
   (= 139629729 (run-centipede (machines test-139629729-from-98765 [9 8 7 6 5]))))

@@ -3,27 +3,43 @@
 
 (defprotocol Machine
   (opcode [_])
+  (add-input [_ i])
   (needs-input? [_])
   (halted? [_])
   (decode-instruction [_])
   (run-step [_])
   (run-machine [_]))
 
-(defn flags [number]
+(def flag->address-mode
+  {0 :address
+   1 :immediate
+   2 :relative})
+
+(defn opcode->address-modes [number]
   (loop [number (quot number 100)
          flags [:opcode]]
     (if (= number 0)
-      flags
+      (concat flags (repeat :address))
       (recur (quot number 10)
-             (conj flags (if (= 1 (rem number 10)) :immediate))))))
-        
-(defn input-loader [instruction program]
-  (let [flags (flags (first instruction))]
+             (conj flags (flag->address-mode (rem number 10)))))))
+
+(defn peek [m i]
+  (if (< i (count m)) (nth m i) 0))
+
+(defn poke [m i n]
+  (if (< i (count m))
+    (assoc m i n)
+    (vec (concat m (repeat (- i (count m)) 0) (vector n)))))
+
+(defn input-loader [instruction program base-address]
+  (let [address-modes (opcode->address-modes (first instruction))]
     (fn [position]
-      (let [value (nth instruction position)]
-        (if (and (< position (count flags)) (= :immediate (nth flags position)))
-          value
-          (nth program value))))))
+      (let [value (nth instruction position)
+            address-mode (nth address-modes position)]
+        (case address-mode
+          :address (peek program value)
+          :immediate value
+          :relative (peek program (+ value base-address)))))))
 
 (def opcodes {1 :add
               2 :mul
@@ -33,6 +49,7 @@
               6 :jump-if-false
               7 :less-than
               8 :equals
+              9 :adjust-relative-base
               99 :halt})
 
 (defn lt [a b] (if (< a b) 1 0))
@@ -46,22 +63,23 @@
    :jump-if-false =
    :jump-if-true not=})
 
-(defrecord IntcodeMachine [pc program input output]
+(defrecord IntcodeMachine [pc program input output relative-base]
   Machine
 
   (opcode [machine]
-    (opcodes (rem (nth program pc) 100)))
+    (opcodes (rem (peek program pc) 100)))
   
   (decode-instruction [machine]
     (let [opcode (opcode machine)
           instruction (subvec program pc)
-          in (input-loader instruction program)
+          in (input-loader instruction program relative-base)
           out #(nth instruction %)]
       (case opcode
         (:add :mul :less-than :equals) [opcode (in 1) (in 2) (out 3)]
         :input [opcode (out 1)]
         :output [opcode (in 1)]
-        (:jump-if-true :jump-if-false) [opcode (in 1) (in 2)])))
+        (:jump-if-true :jump-if-false) [opcode (in 1) (in 2)]
+        :adjust-relative-base [opcode (in 1)])))
       
   (run-step [machine]
     (let [instruction (decode-instruction machine)
@@ -72,23 +90,26 @@
         (let [[_ in1 in2 out] instruction
               operation (opcode->fn opcode)]
                       (IntcodeMachine. (+ 4 pc)
-                                       (assoc program out (operation in1 in2))
+                                       (poke program out (operation in1 in2))
                                        input
-                                       output))
+                                       output
+                                       relative-base))
 
         :input
         (let [[_ out] instruction]
           (IntcodeMachine. (+ 2 pc)
-                           (assoc program out (first input))
+                           (poke program out (first input))
                            (subvec input 1)
-                           output))
+                           output
+                           relative-base))
 
         :output
         (let [[_ in] instruction]
           (IntcodeMachine. (+ 2 pc)
                            program
                            input
-                           (conj output in)))
+                           (conj output in)
+                           relative-base))
         
         (:jump-if-false :jump-if-true)
         (let [[_ value dest] instruction]
@@ -97,10 +118,22 @@
                              (+ 3 pc))
                            program
                            input
-                           output)))))
+                           output
+                           relative-base))
 
+        :adjust-relative-base
+        (let [[_ value] instruction]
+          (IntcodeMachine. (+ 2 pc)
+                           program
+                           input
+                           output
+                           (+ relative-base value))))))
+  
   (needs-input? [machine]
     (and (= :input (opcode machine)) (empty? input)))
+
+  (add-input [machine to-add]
+    (IntcodeMachine. pc program (conj input to-add) output relative-base))
   
   (halted? [machine]
     (= :halt (opcode machine)))
@@ -112,8 +145,12 @@
        (recur (run-step m))))))
         
 (defn run-program
-  ([program] (:program (run-machine (IntcodeMachine. 0 program [] []))))
-  ([program input] (run-machine (IntcodeMachine. 0 program input []))))
+  ([program] (:program (run-machine (IntcodeMachine. 0 program [] [] 0))))
+  ([program input] (run-machine (IntcodeMachine. 0 program input [] 0))))
+
+(defn create-machine
+  ([program] (IntcodeMachine. 0 program [] [] 0))
+  ([program input] (IntcodeMachine. 0 program input [] 0)))
 
 (defn compile [program]
   (fn [input]
@@ -123,6 +160,14 @@
   (fn [input]
     (first (:output (run-program program (vector input))))))
 
+(deftest peek-poke
+  (is (= 1 (peek [1] 0)))
+  (is (= 0 (peek [] 0)))
+  (is (= 0 (peek [1] 1)))
+  (is (= [1] (poke [0] 0 1)))
+  (is (= [1] (poke [] 0 1)))
+  (is (= [1 2 3 0 0 7] (poke [1 2 3] 5 7))))
+
 (deftest test-interpreter-addition-multiplication-exit
   (is (= (run-program [1 0 0 0 99]) [2 0 0 0 99]))
   (is (= (run-program [2 3 0 3 99]) [2 3 0 6 99]))
@@ -131,7 +176,7 @@
 
 (deftest test-io
   (is (= (run-program [3 0 4 0 99] [-999])
-         (IntcodeMachine. 4 [-999 0 4 0 99] [] [-999]))))
+         (IntcodeMachine. 4 [-999 0 4 0 99] [] [-999] 0))))
 
 (deftest test-immediate-flag
   (is (= (run-program [1002 4 3 4 33]) [1002 4 3 4 99])))
@@ -149,7 +194,15 @@
     (is (= (is-eq-8i 9) 0))
     (is (= (is-lt-8i 8) 0))
     (is (= (is-lt-8i 7) 1))))
-  
+
+(deftest relative-addresses
+  (let [p [109,1,204,-1,1001,100,1,100,1008,100,16,101,1006,101,0,99]]
+    (is (= p (:output (run-program p []))))))
+
+(deftest large-numbers
+  (is (= 1125899906842624 (first (:output (run-program [104 1125899906842624 99] [])))))
+  (is (= 1219070632396864 (first (:output (run-program [1102 34915192 34915192 7 4 7 99 0] []))))))
+
 (defn atol [s] (Long/parseLong s))
 
 (defn load-string [s]
