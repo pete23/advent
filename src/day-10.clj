@@ -15,21 +15,25 @@
 ;; set
 ;; count
 
-(defn cartesian->theta [x y]
-  (Math/atan2 y x))
+(defn cartesian->both [[x y v]]
+  {:r (Math/sqrt (+ (* x x) (* y y)))
+   :theta (Math/atan2 y x)
+   :x x
+   :y y})
 
 (defn grid->coords [grid]
   (for [x (range (count (first grid)))
         y (range (count grid))
         :let [v ((grid y) x)]
         :when (> v 0)]
-    [x y]))
+    [x y v]))
+
+(defn calculate-coordinates-relative-to [[x y] coords]
+  (let [relative (map (fn [[x1 y1]] [(- x1 x) (- y1 y)]) coords)]
+    (filter #(> (:r %) 0) (map cartesian->both relative))))
 
 (defn calculate-visible [[x y] coords]
-  (let [others (remove #(= % [x y]) coords)
-        relative (map (fn [[x1 y1]] [(- x1 x) (- y1 y)]) others)
-        thetas (map (fn [[x y]] (cartesian->theta x y)) relative)]
-    (count (set thetas))))
+  (count (set (map :theta (calculate-coordinates-relative-to [x y] coords)))))
 
 (defn visible-from-grid [grid]
   (let [coords (grid->coords grid)
@@ -37,10 +41,36 @@
     (reduce #(assoc-in %1 (reverse (first %2)) (second %2)) grid visible-counts)))
 
 (deftest example
-  (is (= (visible-from-grid [[0 1 0 0 1][0 0 0 0 0][1 1 1 1 1][0 0 0 0 1][0 0 0 1 1]])
+  (is (= (visible-from-grid
+          [[0 1 0 0 1][0 0 0 0 0][1 1 1 1 1][0 0 0 0 1][0 0 0 1 1]])
          [[0 7 0 0 7][0 0 0 0 0][6 7 7 7 5][0 0 0 0 7][0 0 0 8 7]])))
 
-(defn part-1 []
-  (let [grid (visible-from-grid input)]
-    (reduce #(reduce max %1 %2) 0 grid)))
 
+(defn part-1 []
+  (let [coords (grid->coords (visible-from-grid input))]
+    (apply max-key last coords)))
+
+(defn explodonate-closest [[exploded targets] aim]
+  (let [[boom & surviving] (sort-by :r (targets aim))
+        exploded (conj exploded boom)]
+    (if (nil? surviving)
+      (vector exploded (dissoc targets aim))
+      (vector exploded (assoc targets aim surviving)))))
+
+(deftest explodonator
+  (is (= [[{:r 0}] {1 '({:r 1})}] (explodonate-closest [[] {1 '({:r 1}{:r 0})}] 1))))
+
+;;; PART TWO WIP
+
+(defn list-of-ordered-targets [grid]
+   (let [coords (grid->coords input)
+         targets (into (sorted-map)
+                       (group-by :theta (calculate-coordinates-relative-to [17 23] coords)))
+         theta-of-first-target (:theta (cartesian->both [0 1])) ;; 12 o'clock
+         first-target-batch (drop-while #(< % theta-of-first-target) (keys targets))]
+     (loop [acc []
+            target-batch first-target-batch
+            targets targets]
+       (let [[new-acc new-targets] (reduce explodonate-closest (vector acc targets) target-batch)]
+         (if (empty? new-targets) new-acc
+             (recur new-acc (keys new-targets) new-targets))))))
