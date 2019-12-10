@@ -18,15 +18,18 @@
 
 (defn opcode->address-modes [number]
   (loop [number (quot number 100)
-         flags []]
+         flags [:address :address :address]
+         flag 0]
     (if (= number 0)
-      (concat flags (repeat :address))
+      flags
       (recur (quot number 10)
-             (conj flags (flag->address-mode (rem number 10)))))))
+             (assoc flags flag (flag->address-mode (rem number 10)))
+             (inc flag)))))
+
+(def opcode->address-modes (memoize opcode->address-modes))
 
 (defn peek [m i]
-  ;(println :peek i (if (< i (count m)) (nth m i) "0*"))
-  (if (< i (count m)) (nth m i) 0))
+  (or (nth m i) 0))
 
 (defn poke [m i n]
   ;(println :poke i n)
@@ -89,17 +92,20 @@
   (decode-instruction [machine]
     (let [opcode (opcode machine)
           io (opcode->operands opcode)
+          nargs (count io)
           address-modes (opcode->address-modes (nth program pc))
-          args (subvec program (inc pc))]
-      (conj (map #(resolve-operand %1 %2 %3 program relative-base) args io address-modes) opcode)))
+          source (subvec program (inc pc) (+ pc nargs 1))]
+      (loop [args (transient []) i 0]
+        (if (>= i nargs)
+          [opcode (persistent! args)]
+          (recur (conj! args (resolve-operand (source i) (io i) (address-modes i) program relative-base))
+                 (inc i))))))
       
   (run-step [machine]
-    (let [instruction (decode-instruction machine)
-          ;_(println pc instruction)
-          opcode (first instruction)]
+    (let [[opcode args] (decode-instruction machine)]
       (case opcode 
         (:add :mul :less-than :equals)
-        (let [[_ in1 in2 out] instruction
+        (let [[in1 in2 out] args
               operation (opcode->fn opcode)]
                       (IntcodeMachine. (+ 4 pc)
                                        (poke program out (operation in1 in2))
@@ -108,7 +114,7 @@
                                        relative-base))
 
         :input
-        (let [[_ out] instruction]
+        (let [[out] args]
           (IntcodeMachine. (+ 2 pc)
                            (poke program out (first input))
                            (subvec input 1)
@@ -116,7 +122,7 @@
                            relative-base))
 
         :output
-        (let [[_ in] instruction]
+        (let [[in] args]
           (IntcodeMachine. (+ 2 pc)
                            program
                            input
@@ -124,7 +130,7 @@
                            relative-base))
         
         (:jump-if-false :jump-if-true)
-        (let [[_ value dest] instruction]
+        (let [[value dest] args]
           (IntcodeMachine. (if ((opcode->fn opcode) 0 value)
                              dest
                              (+ 3 pc))
@@ -134,7 +140,7 @@
                            relative-base))
 
         :adjust-relative-base
-        (let [[_ value] instruction]
+        (let [[value] args]
           (IntcodeMachine. (+ 2 pc)
                            program
                            input
