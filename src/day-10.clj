@@ -2,7 +2,7 @@
   (:use clojure.test))
 
 (defn line->vec [line]
-  (mapv { \. 0 \# 1 } line))
+  (mapv { \. 0 \# 1 \X 1} line))
 
 (def input (->> "day-10.input"
                 clojure.java.io/resource
@@ -62,11 +62,11 @@
 
 ;;; PART TWO WIP
 
-(defn list-of-ordered-targets [grid]
-   (let [coords (grid->coords input)
+(defn list-of-ordered-targets [[x y] grid]
+   (let [coords (grid->coords grid)
          targets (into (sorted-map)
-                       (group-by :theta (calculate-coordinates-relative-to [17 23] coords)))
-         theta-of-first-target (:theta (cartesian->both [0 1])) ;; 12 o'clock
+                       (group-by :theta (calculate-coordinates-relative-to [x y] coords)))
+         theta-of-first-target (:theta (cartesian->both [0 -1])) ;; 12 o'clock
          first-target-batch (drop-while #(< % theta-of-first-target) (keys targets))]
      (loop [acc []
             target-batch first-target-batch
@@ -74,3 +74,14 @@
        (let [[new-acc new-targets] (reduce explodonate-closest (vector acc targets) target-batch)]
          (if (empty? new-targets) new-acc
              (recur new-acc (keys new-targets) new-targets))))))
+
+(def test-input (mapv line->vec [".#....#####...#.."
+                                 "##...##.#####..##"
+                                 "##...#...#.#####."
+                                 "..#.....X...###.."
+                                 "..#.#.....#....##"]))
+
+(defn part-2 []
+  (nth (list-of-ordered-targets [17 23] input) 199))
+
+;; uhm then add the 17 and 23 back on and stuff
