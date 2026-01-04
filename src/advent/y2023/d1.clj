@@ -36,7 +36,7 @@
           (map calc
                (map #(filter identity (parse-fn %))
                     (clojure.string/split
-                     (slurp "resources/advent/y2023/d1.txt") #"\n")))))
+                     (slurp "resources/y2023/d1.txt") #"\n")))))
 (defn part-1 []
   (part #(map ctoi %)))
 

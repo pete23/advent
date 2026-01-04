@@ -25,7 +25,7 @@
   (reduce + (map fuel input)))
 
 (defn fixpoint-fuel
-  ([n] (fix-point-fuel 0 (fuel n)))
+  ([n] (fixpoint-fuel 0 (fuel n)))
   ([w n] (if (= n 0)
            w
            (recur (+ w n) (fuel n)))))
