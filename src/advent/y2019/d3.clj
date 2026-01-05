@@ -1,4 +1,5 @@
 (ns advent.y2019.d3
+  (:require [clojure.set])
   (:use clojure.test))
 
 (defn atol [s] (Long/parseLong s))
