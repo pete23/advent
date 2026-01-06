@@ -44,9 +44,22 @@ lein repl
 (part-1)
 (part-2)
 
-# Run tests
+# Run tests (years 2017-2023)
 (run-tests)
 ```
+
+## Test Suite
+
+Regression tests are available in `test/advent/`:
+- **2017**: 2 days tested (4 assertions)
+- **2018**: 2 days tested (4 assertions)
+- **2019**: 7 days tested (14 assertions)
+- **2020**: 2 days tested (4 assertions)
+- **2023**: 1 day tested (2 assertions)
+- **2024**: 22 solution files present (requires dom-top, core.matrix dependencies)
+- **2025**: 2 solution files present (requires dom-top dependency)
+
+**Note:** 2024 and 2025 solutions require dependencies from Clojars that are not currently in project.clj. See test files for details.
 
 ## Languages Used
 
